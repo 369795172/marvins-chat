@@ -59,6 +59,32 @@ npm run build
 npm start
 ```
 
+## Deployment
+
+### Deploy to Vercel (Recommended)
+
+The easiest way to deploy is using Vercel:
+
+1. **Via GitHub Integration** (Recommended):
+   - Go to [vercel.com](https://vercel.com)
+   - Click "Import Project"
+   - Select your GitHub repository (`marvins-chat`)
+   - Add environment variable: `AI_BUILDER_TOKEN` (your API token)
+   - Click "Deploy"
+
+2. **Via Vercel CLI**:
+   ```bash
+   npm install -g vercel
+   vercel
+   ```
+   Follow the prompts and add your `AI_BUILDER_TOKEN` when asked.
+
+### Environment Variables
+
+Make sure to set the following environment variable in your deployment platform:
+
+- `AI_BUILDER_TOKEN`: Your AI Builder Space API token (get it from https://space.ai-builders.com)
+
 ## Project Structure
 
 ```
