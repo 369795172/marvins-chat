@@ -1,6 +1,6 @@
 'use client';
 
-import { Message } from '@/lib/types';
+import { Message, ToolCallRecord } from '@/lib/types';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -128,21 +128,89 @@ export default function MessageList({ messages, isLoading, onEditMessage }: Mess
                     </div>
                   ) : (
                     <>
+                      {message.role === 'assistant' && message.status && (
+                        <div className="mb-2">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs bg-gray-700 text-gray-300">
+                            {message.status === 'thinking' && (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                                Thinking...
+                              </>
+                            )}
+                            {message.status === 'searching' && (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                Searching...
+                              </>
+                            )}
+                            {message.status === 'executing' && (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                                Executing...
+                              </>
+                            )}
+                            {message.status === 'error' && (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                                Error
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {message.toolCalls.map((tc: ToolCallRecord, i: number) => {
+                            const argSummary = Object.entries(tc.args || {})
+                              .map(([k, v]) => {
+                                const s = typeof v === 'string' ? v : JSON.stringify(v);
+                                return `${k}: ${s.length > 60 ? s.slice(0, 57) + '...' : s}`;
+                              })
+                              .join(', ');
+                            return (
+                              <details key={i} className="rounded bg-gray-900/80 border border-gray-700">
+                                <summary className="px-3 py-2 cursor-pointer text-sm font-mono text-gray-300 hover:text-gray-100">
+                                  <span className="text-blue-400">{tc.tool}</span>
+                                  <span className="text-gray-500">({argSummary})</span>
+                                  {tc.success !== undefined && (
+                                    <span className={`ml-2 ${tc.success ? 'text-green-400' : 'text-red-400'}`}>
+                                      {tc.success ? '✓' : '✗'}
+                                    </span>
+                                  )}
+                                </summary>
+                                <div className="border-t border-gray-700">
+                                  {tc.output != null && (
+                                    <pre className="px-3 py-2 text-xs text-gray-400 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
+                                      {tc.output}
+                                    </pre>
+                                  )}
+                                  {tc.output == null && (
+                                    <pre className="px-3 py-2 text-xs text-gray-500 overflow-x-auto">
+                                      {JSON.stringify(tc.args, null, 2)}
+                                    </pre>
+                                  )}
+                                </div>
+                              </details>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div className="prose prose-invert prose-sm max-w-none break-words">
                         {message.role === 'assistant' ? (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             rehypePlugins={[rehypeRaw, rehypeHighlight]}
                             components={{
-                              // Custom styling for code blocks
+                              // Custom styling for code blocks (use code+div to avoid p>pre hydration error)
                               code: ({ node, inline, className, children, ...props }: any) => {
-                                const match = /language-(\w+)/.exec(className || '');
                                 return !inline ? (
-                                  <pre className="bg-gray-900 rounded-lg p-4 overflow-x-auto my-2">
-                                    <code className={className} {...props}>
-                                      {children}
-                                    </code>
-                                  </pre>
+                                  <code
+                                    className={`${className || ''} block bg-gray-900 rounded-lg p-4 overflow-x-auto my-2 font-mono text-sm`}
+                                    style={{ whiteSpace: 'pre' }}
+                                    {...props}
+                                  >
+                                    {children}
+                                  </code>
                                 ) : (
                                   <code className="bg-gray-700 px-1.5 py-0.5 rounded text-sm" {...props}>
                                     {children}

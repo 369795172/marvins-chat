@@ -25,6 +25,19 @@ export async function POST(request: NextRequest) {
     const chatUrl = `${API_BASE_URL}/chat/completions`;
     console.log('Chat request:', { model: selectedModel, messageCount: messages.length, stream });
 
+    const messagesWithSystem = [
+      {
+        role: 'system',
+        content:
+          'You are a helpful AI assistant. ' +
+          'IMPORTANT: You do NOT have access to the user\'s filesystem, terminal, or local environment. ' +
+          'If the user asks you to list files, read directories, run commands, or interact with their local machine, ' +
+          'clearly tell them you cannot do that in chat mode and suggest they enable "Agent Mode" (the toggle in the top-right corner). ' +
+          'Never fabricate, guess, or hallucinate file listings, directory contents, or command outputs.',
+      },
+      ...messages,
+    ];
+
     if (stream) {
       // Try streaming first
       let apiResponse = await fetch(chatUrl, {
@@ -35,7 +48,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model: selectedModel,
-          messages,
+          messages: messagesWithSystem,
           stream: true,
           temperature: 0.7,
         }),
@@ -57,7 +70,7 @@ export async function POST(request: NextRequest) {
             },
             body: JSON.stringify({
               model: selectedModel,
-              messages,
+              messages: messagesWithSystem,
               temperature: 0.7,
             }),
           });
@@ -73,7 +86,8 @@ export async function POST(request: NextRequest) {
           const encoder = new TextEncoder();
           const singleChunkStream = new ReadableStream({
             start(controller) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'status', status: 'thinking' })}\n\n`));
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`));
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               controller.close();
             },
@@ -107,6 +121,9 @@ export async function POST(request: NextRequest) {
           let buffer = '';
 
           try {
+            // Emit thinking status at start for observability
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'status', status: 'thinking' })}\n\n`));
+
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
@@ -130,7 +147,8 @@ export async function POST(request: NextRequest) {
                     const parsed = JSON.parse(data);
                     const content = parsed.choices?.[0]?.delta?.content || '';
                     if (content) {
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                      // Backward compat: send { content } and { type: 'content', content }
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`));
                     }
                   } catch {
                     // Not valid JSON SSE chunk — could be a non-streaming response
@@ -141,7 +159,7 @@ export async function POST(request: NextRequest) {
                     const parsed = JSON.parse(trimmed);
                     const content = parsed.choices?.[0]?.message?.content || '';
                     if (content) {
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`));
                     }
                   } catch {
                     // Ignore parse errors
@@ -153,7 +171,9 @@ export async function POST(request: NextRequest) {
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
             controller.close();
           } catch (error) {
-            controller.error(error);
+            const msg = error instanceof Error ? error.message : String(error);
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: msg, context: 'network' })}\n\n`));
+            controller.close();
           }
         },
       });
@@ -175,7 +195,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           model: selectedModel,
-          messages,
+          messages: messagesWithSystem,
           temperature: 0.7,
         }),
       });
