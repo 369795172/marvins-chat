@@ -37,7 +37,9 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT=3000
+# Use PORT environment variable if set, otherwise default to 3000
+ENV PORT=${PORT:-3000}
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+# Start the server on the port specified by PORT env var
+CMD sh -c "node server.js"
